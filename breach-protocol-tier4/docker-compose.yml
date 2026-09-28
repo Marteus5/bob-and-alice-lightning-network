@@ -1,0 +1,82 @@
+version: "3.8"
+
+# Breach Protocol — Tier 4: Bitcoin/Lightning regtest lab
+#
+# Brings up:
+#   - bitcoind   : a private Bitcoin regtest node (instant mining, no real money)
+#   - lnd-alice  : a Lightning node
+#   - lnd-bob    : a second Lightning node, so you can open a channel between them
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f          # watch startup
+#   docker compose down             # stop everything
+#   docker compose down -v          # stop AND wipe all chain/wallet data (start totally fresh)
+
+services:
+  bitcoind:
+    image: ruimarinho/bitcoin-core:24
+    container_name: bp-bitcoind
+    restart: unless-stopped
+    command:
+      - -regtest=1
+      - -server=1
+      - -txindex=1
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=0.0.0.0/0
+      - -rpcuser=breachprotocol
+      - -rpcpassword=breachprotocol
+      - -zmqpubrawblock=tcp://0.0.0.0:28332
+      - -zmqpubrawtx=tcp://0.0.0.0:28333
+      - -fallbackfee=0.0002
+    ports:
+      - "127.0.0.1:18443:18443"   # regtest RPC
+      - "127.0.0.1:28332:28332"   # zmq raw block
+      - "127.0.0.1:28333:28333"   # zmq raw tx
+    volumes:
+      - bitcoind-data:/home/bitcoin/.bitcoin
+    networks:
+      - bp-net
+
+  lnd-alice:
+    image: lightninglabs/lnd:v0.18.0-beta
+    container_name: bp-lnd-alice
+    restart: unless-stopped
+    depends_on:
+      - bitcoind
+    command:
+      - --lnddir=/root/.lnd
+    volumes:
+      - ./lnd-alice/lnd.conf:/root/.lnd/lnd.conf:ro
+      - lnd-alice-data:/root/.lnd
+    ports:
+      - "127.0.0.1:10001:10009"   # gRPC (alice)
+      - "127.0.0.1:8081:8080"     # REST (alice)
+    networks:
+      - bp-net
+
+  lnd-bob:
+    image: lightninglabs/lnd:v0.18.0-beta
+    container_name: bp-lnd-bob
+    restart: unless-stopped
+    depends_on:
+      - bitcoind
+    command:
+      - --lnddir=/root/.lnd
+    volumes:
+      - ./lnd-bob/lnd.conf:/root/.lnd/lnd.conf:ro
+      - lnd-bob-data:/root/.lnd
+    ports:
+      - "127.0.0.1:10002:10009"   # gRPC (bob)
+      - "127.0.0.1:8082:8080"     # REST (bob)
+    networks:
+      - bp-net
+
+networks:
+  bp-net:
+    driver: bridge
+
+volumes:
+  bitcoind-data:
+  lnd-alice-data:
+  lnd-bob-data:
