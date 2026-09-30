@@ -55,3 +55,42 @@ docker compose -p run-<id> down -v
 ```
 
 See `README.md` for the full walkthrough (wallets, funding, channels, payments).
+
+## Bob pays Alice back (Lightning)
+
+Prerequisite: the Alice→Bob channel from README steps 5–6 is open. Alice opened it
+with 500,000 sat, so at first *all* the liquidity is on Alice's side. Bob can only
+send what he has received, and LND makes him keep a channel reserve (~1% of channel
+capacity, 5,000 sat here), so first move some balance to Bob.
+
+1. Give Bob enough outbound liquidity (Alice pays Bob 100,000 sat):
+   ```
+   docker exec bp-lnd-bob lncli --network=regtest addinvoice --amt=100000
+   docker exec bp-lnd-alice lncli --network=regtest payinvoice <PAYMENT_REQUEST>
+   ```
+2. Alice creates an invoice for what Bob will send back (e.g. 20,000 sat):
+   ```
+   docker exec bp-lnd-alice lncli --network=regtest addinvoice --amt=20000
+   ```
+3. Bob pays it (copy `payment_request` from step 2):
+   ```
+   docker exec bp-lnd-bob lncli --network=regtest payinvoice <PAYMENT_REQUEST>
+   ```
+4. Verify balances on both sides:
+   ```
+   docker exec bp-lnd-alice lncli --network=regtest channelbalance
+   docker exec bp-lnd-bob   lncli --network=regtest channelbalance
+   ```
+
+Invoice-free alternative (keysend), from Bob:
+```
+docker exec bp-lnd-bob lncli --network=regtest sendpayment --dest=<ALICE_PUBKEY> --amt=20000 --keysend
+```
+(Alice's pubkey: `docker exec bp-lnd-alice lncli --network=regtest getinfo`. If keysend is rejected, add `accept-keysend=true` to `lnd-alice/lnd.conf` and restart her.)
+
+To send **on-chain** coins instead (Bob's wallet must be funded first):
+```
+docker exec bp-lnd-alice lncli --network=regtest newaddress p2wkh
+docker exec bp-lnd-bob   lncli --network=regtest sendcoins --addr=<ALICE_ADDR> --amt=50000
+docker exec bp-bitcoind  bitcoin-cli -regtest -rpcuser=breachprotocol -rpcpassword=breachprotocol -generate 1
+```
